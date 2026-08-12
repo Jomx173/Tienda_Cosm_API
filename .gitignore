@@ -5,3 +5,6 @@ node_modules
 # Imágenes subidas por el admin (datos de runtime, no código)
 app/uploads/*
 !app/uploads/.gitkeep
+
+.vercel
+.env*
