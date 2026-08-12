@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const bannerController = require('../Controllers/bannerController');
+const bannerController = require('../controllers/bannerController');
 const upload = require('../middlewares/upload');
 const isAuth = require('../middlewares/auth');
 const role = require('../middlewares/role');

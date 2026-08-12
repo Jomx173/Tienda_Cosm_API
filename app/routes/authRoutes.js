@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const authController = require('../Controllers/authController');
+const authController = require('../controllers/authController');
 const isAuth = require('../middlewares/auth');
 const role = require('../middlewares/role');
 
