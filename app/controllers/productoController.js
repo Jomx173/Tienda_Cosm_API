@@ -149,14 +149,7 @@ const eliminarProducto = async (req, res) => {
             });
         }
 
-        await sequelize.transaction(async (t) => {
-            await sequelize.query('DELETE FROM detallepedido WHERE id_producto = ?', {
-                replacements: [req.params.id],
-                transaction: t,
-            });
-
-            await producto.destroy({ transaction: t });
-        });
+        await producto.destroy();
 
         res.status(200).json({
             ok: true,
