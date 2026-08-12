@@ -86,7 +86,7 @@ const crearProducto = async (req, res) => {
         const datos = req.body;
 
         if (req.file) {
-            datos.imagen = `/uploads/${req.file.filename}`;
+            datos.imagen = req.file.path;
         }
 
         const producto = await Producto.create(normalizarDatos(datos));
@@ -110,7 +110,7 @@ const actualizarProducto = async (req, res) => {
         const datos = req.body;
 
         if (req.file) {
-            datos.imagen = `/uploads/${req.file.filename}`;
+            datos.imagen = req.file.path;
         }
 
         const producto = await Producto.findByPk(req.params.id);

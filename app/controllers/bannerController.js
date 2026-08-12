@@ -1,13 +1,9 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-
 const db = require('../config/db');
+const cloudinary = require('../config/cloudinary');
 
 const Banner = db.banner;
-
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 
 // Obtener todos los banners activos (o todos si se pide)
 const obtenerBanners = async (req, res) => {
@@ -60,7 +56,7 @@ const crearBanner = async (req, res) => {
         const datos = req.body;
 
         if (req.file) {
-            datos.imagen = `/uploads/${req.file.filename}`;
+            datos.imagen = req.file.path;
         }
 
         const banner = await Banner.create(datos);
@@ -84,7 +80,7 @@ const actualizarBanner = async (req, res) => {
         const datos = req.body;
 
         if (req.file) {
-            datos.imagen = `/uploads/${req.file.filename}`;
+            datos.imagen = req.file.path;
         }
 
         const banner = await Banner.findByPk(req.params.id);
@@ -125,9 +121,9 @@ const eliminarBanner = async (req, res) => {
 
         await banner.destroy();
 
-        if (banner.imagen) {
-            const nombre = path.basename(String(banner.imagen).replace(/^\/uploads\//, ''));
-            fs.unlink(path.join(UPLOADS_DIR, nombre), () => {});
+        if (banner.imagen && /cloudinary\.com/.test(String(banner.imagen))) {
+            const publicId = String(banner.imagen).split('/').slice(-2).join('/').replace(/\.[a-z]+$/, '');
+            cloudinary.uploader.destroy(publicId, () => {});
         }
 
         res.status(200).json({
