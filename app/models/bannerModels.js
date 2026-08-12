@@ -1,9 +1,9 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/db");
+'use strict';
 
-const Banner = sequelize.define(
-    "Banner",
-    {
+const { DataTypes } = require('sequelize');
+
+module.exports = (sequelize) => {
+    const Banner = sequelize.define('Banner', {
         id_banner: {
             type: DataTypes.INTEGER,
             primaryKey: true,
@@ -34,11 +34,10 @@ const Banner = sequelize.define(
             type: DataTypes.BOOLEAN,
             defaultValue: true,
         },
-    },
-    {
-        tableName: "Banner",
+    }, {
+        tableName: 'Banner',
         timestamps: false,
-    }
-);
+    });
 
-module.exports = Banner;
+    return Banner;
+};

@@ -1,20 +1,31 @@
-const bannerService = require("../Service/bannerService");
+'use strict';
 
-// Obtener todos los banners
+const fs = require('fs');
+const path = require('path');
+
+const db = require('../config/db');
+
+const Banner = db.banner;
+
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+
+// Obtener todos los banners activos (o todos si se pide)
 const obtenerBanners = async (req, res) => {
     try {
-        const todos = req.query.todos === "1";
-        const banners = await bannerService.obtenerBanners(todos);
+        const todos = req.query.todos === '1';
+        const banners = await Banner.findAll({
+            where: todos ? {} : { estado: true },
+            order: [['orden', 'ASC'], ['id_banner', 'ASC']],
+        });
 
         res.status(200).json({
             ok: true,
-            data: banners
+            data: banners,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -22,24 +33,23 @@ const obtenerBanners = async (req, res) => {
 // Obtener un banner por ID
 const obtenerBanner = async (req, res) => {
     try {
-        const banner = await bannerService.obtenerBanner(req.params.id);
+        const banner = await Banner.findByPk(req.params.id);
 
         if (!banner) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Banner no encontrado"
+                mensaje: 'Banner no encontrado',
             });
         }
 
         res.status(200).json({
             ok: true,
-            data: banner
+            data: banner,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -53,18 +63,17 @@ const crearBanner = async (req, res) => {
             datos.imagen = `/uploads/${req.file.filename}`;
         }
 
-        const banner = await bannerService.crearBanner(datos);
+        const banner = await Banner.create(datos);
 
         res.status(201).json({
             ok: true,
-            mensaje: "Banner creado correctamente",
-            data: banner
+            mensaje: 'Banner creado correctamente',
+            data: banner,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -78,53 +87,57 @@ const actualizarBanner = async (req, res) => {
             datos.imagen = `/uploads/${req.file.filename}`;
         }
 
-        const banner = await bannerService.actualizarBanner(
-            req.params.id,
-            datos
-        );
+        const banner = await Banner.findByPk(req.params.id);
 
         if (!banner) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Banner no encontrado"
+                mensaje: 'Banner no encontrado',
             });
         }
 
+        await banner.update(datos);
+
         res.status(200).json({
             ok: true,
-            mensaje: "Banner actualizado correctamente",
-            data: banner
+            mensaje: 'Banner actualizado correctamente',
+            data: banner,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
 
-// Eliminar banner
+// Eliminar banner (borrado físico)
 const eliminarBanner = async (req, res) => {
     try {
-        const banner = await bannerService.eliminarBanner(req.params.id);
+        const banner = await Banner.findByPk(req.params.id);
 
         if (!banner) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Banner no encontrado"
+                mensaje: 'Banner no encontrado',
             });
+        }
+
+        await banner.destroy();
+
+        if (banner.imagen) {
+            const nombre = path.basename(String(banner.imagen).replace(/^\/uploads\//, ''));
+            fs.unlink(path.join(UPLOADS_DIR, nombre), () => {});
         }
 
         res.status(200).json({
             ok: true,
-            mensaje: "Banner eliminado correctamente"
+            mensaje: 'Banner eliminado correctamente',
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -134,5 +147,5 @@ module.exports = {
     obtenerBanner,
     crearBanner,
     actualizarBanner,
-    eliminarBanner
+    eliminarBanner,
 };

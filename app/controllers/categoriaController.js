@@ -1,19 +1,26 @@
-const categoriaService = require("../Service/categoriaService");
+'use strict';
 
-// Obtener todas las categorías
+const db = require('../config/db');
+
+const Categoria = db.categoria;
+
+// Obtener todas las categorías (solo activas para la tienda, todas para el admin)
 const obtenerCategorias = async (req, res) => {
     try {
-        const categorias = await categoriaService.obtenerCategorias();
+        const todos = req.query.todos === '1';
+        const categorias = await Categoria.findAll({
+            where: todos ? {} : { estado: true },
+            order: [['nombre', 'ASC']],
+        });
 
         res.status(200).json({
             ok: true,
-            data: categorias
+            data: categorias,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -21,24 +28,23 @@ const obtenerCategorias = async (req, res) => {
 // Obtener una categoría por ID
 const obtenerCategoria = async (req, res) => {
     try {
-        const categoria = await categoriaService.obtenerCategoria(req.params.id);
+        const categoria = await Categoria.findByPk(req.params.id);
 
         if (!categoria) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Categoría no encontrada"
+                mensaje: 'Categoría no encontrada',
             });
         }
 
         res.status(200).json({
             ok: true,
-            data: categoria
+            data: categoria,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -46,18 +52,17 @@ const obtenerCategoria = async (req, res) => {
 // Crear categoría
 const crearCategoria = async (req, res) => {
     try {
-        const categoria = await categoriaService.crearCategoria(req.body);
+        const categoria = await Categoria.create(req.body);
 
         res.status(201).json({
             ok: true,
-            mensaje: "Categoría creada correctamente",
-            data: categoria
+            mensaje: 'Categoría creada correctamente',
+            data: categoria,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -65,53 +70,52 @@ const crearCategoria = async (req, res) => {
 // Actualizar categoría
 const actualizarCategoria = async (req, res) => {
     try {
-        const categoria = await categoriaService.actualizarCategoria(
-            req.params.id,
-            req.body
-        );
+        const categoria = await Categoria.findByPk(req.params.id);
 
         if (!categoria) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Categoría no encontrada"
+                mensaje: 'Categoría no encontrada',
             });
         }
 
+        await categoria.update(req.body);
+
         res.status(200).json({
             ok: true,
-            mensaje: "Categoría actualizada correctamente",
-            data: categoria
+            mensaje: 'Categoría actualizada correctamente',
+            data: categoria,
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
 
-// Eliminar categoría
+// Eliminar categoría (baja lógica)
 const eliminarCategoria = async (req, res) => {
     try {
-        const categoria = await categoriaService.eliminarCategoria(req.params.id);
+        const categoria = await Categoria.findByPk(req.params.id);
 
         if (!categoria) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Categoría no encontrada"
+                mensaje: 'Categoría no encontrada',
             });
         }
 
+        await categoria.update({ estado: false });
+
         res.status(200).json({
             ok: true,
-            mensaje: "Categoría eliminada correctamente"
+            mensaje: 'Categoría eliminada correctamente',
         });
-
     } catch (error) {
         res.status(500).json({
             ok: false,
-            mensaje: error.message
+            mensaje: error.message,
         });
     }
 };
@@ -121,5 +125,5 @@ module.exports = {
     obtenerCategoria,
     crearCategoria,
     actualizarCategoria,
-    eliminarCategoria
+    eliminarCategoria,
 };

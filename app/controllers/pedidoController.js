@@ -1,18 +1,24 @@
-const pedidoService = require("../Service/pedidoService");
+'use strict';
 
-// Obtener todos los pedidos
+const db = require('../config/db');
+
+const Pedido = db.pedido;
+
+const formatearPedido = (pedido) => ({
+    ...pedido.toJSON(),
+    productos: pedido.productos ? JSON.parse(pedido.productos) : [],
+});
+
+// Obtener todos los pedidos (más recientes primero)
 const obtenerPedidos = async (req, res) => {
     try {
-        const pedidos = await pedidoService.obtenerPedidos();
-
-        const pedidosFormateados = pedidos.map((pedido) => ({
-            ...pedido.toJSON(),
-            productos: pedido.productos ? JSON.parse(pedido.productos) : [],
-        }));
+        const pedidos = await Pedido.findAll({
+            order: [['id_pedido', 'DESC']],
+        });
 
         res.status(200).json({
             ok: true,
-            data: pedidosFormateados,
+            data: pedidos.map(formatearPedido),
         });
     } catch (error) {
         res.status(500).json({
@@ -25,21 +31,18 @@ const obtenerPedidos = async (req, res) => {
 // Obtener un pedido por ID
 const obtenerPedido = async (req, res) => {
     try {
-        const pedido = await pedidoService.obtenerPedido(req.params.id);
+        const pedido = await Pedido.findByPk(req.params.id);
 
         if (!pedido) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Pedido no encontrado",
+                mensaje: 'Pedido no encontrado',
             });
         }
 
         res.status(200).json({
             ok: true,
-            data: {
-                ...pedido.toJSON(),
-                productos: pedido.productos ? JSON.parse(pedido.productos) : [],
-            },
+            data: formatearPedido(pedido),
         });
     } catch (error) {
         res.status(500).json({
@@ -57,40 +60,57 @@ const crearPedido = async (req, res) => {
         if (!Array.isArray(datos.productos) || datos.productos.length === 0) {
             return res.status(400).json({
                 ok: false,
-                mensaje: "El pedido debe incluir al menos un producto",
+                mensaje: 'El pedido debe incluir al menos un producto',
             });
         }
 
         if (datos.nombre_cliente && !/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ' ]+$/.test(datos.nombre_cliente)) {
             return res.status(400).json({
                 ok: false,
-                mensaje: "El nombre solo puede contener letras",
+                mensaje: 'El nombre solo puede contener letras',
             });
         }
 
         if (datos.telefono_cliente && !/^[0-9+()\- ]+$/.test(datos.telefono_cliente)) {
             return res.status(400).json({
                 ok: false,
-                mensaje: "El teléfono solo puede contener números",
+                mensaje: 'El teléfono solo puede contener números',
             });
         }
 
-        if (datos.direccion && datos.direccion.length > 300) {
+        if (!datos.direccion || !datos.direccion.trim()) {
             return res.status(400).json({
                 ok: false,
-                mensaje: "La dirección es demasiado larga",
+                mensaje: 'La dirección es obligatoria',
             });
         }
 
-        const pedido = await pedidoService.crearPedido(datos);
+        if (datos.direccion.length > 300) {
+            return res.status(400).json({
+                ok: false,
+                mensaje: 'La dirección es demasiado larga',
+            });
+        }
+
+        const productos = Array.isArray(datos.productos) ? datos.productos : [];
+        const total = productos.reduce(
+            (suma, item) => suma + Number(item.precio) * Number(item.cantidad),
+            0
+        );
+
+        const pedido = await Pedido.create({
+            nombre_cliente: datos.nombre_cliente || '',
+            telefono_cliente: datos.telefono_cliente || '',
+            direccion: datos.direccion || '',
+            productos: JSON.stringify(productos),
+            total,
+            estado: 'pendiente',
+        });
 
         res.status(201).json({
             ok: true,
-            mensaje: "Pedido creado correctamente",
-            data: {
-                ...pedido.toJSON(),
-                productos: pedido.productos ? JSON.parse(pedido.productos) : [],
-            },
+            mensaje: 'Pedido creado correctamente',
+            data: formatearPedido(pedido),
         });
     } catch (error) {
         res.status(500).json({
@@ -108,25 +128,24 @@ const actualizarEstadoPedido = async (req, res) => {
         if (!estado) {
             return res.status(400).json({
                 ok: false,
-                mensaje: "El estado es obligatorio",
+                mensaje: 'El estado es obligatorio',
             });
         }
 
-        const pedido = await pedidoService.actualizarEstadoPedido(
-            req.params.id,
-            estado
-        );
+        const pedido = await Pedido.findByPk(req.params.id);
 
         if (!pedido) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Pedido no encontrado",
+                mensaje: 'Pedido no encontrado',
             });
         }
 
+        await pedido.update({ estado });
+
         res.status(200).json({
             ok: true,
-            mensaje: "Estado del pedido actualizado",
+            mensaje: 'Estado del pedido actualizado',
             data: pedido,
         });
     } catch (error) {
@@ -140,18 +159,20 @@ const actualizarEstadoPedido = async (req, res) => {
 // Eliminar un pedido
 const eliminarPedido = async (req, res) => {
     try {
-        const pedido = await pedidoService.eliminarPedido(req.params.id);
+        const pedido = await Pedido.findByPk(req.params.id);
 
         if (!pedido) {
             return res.status(404).json({
                 ok: false,
-                mensaje: "Pedido no encontrado",
+                mensaje: 'Pedido no encontrado',
             });
         }
 
+        await pedido.destroy();
+
         res.status(200).json({
             ok: true,
-            mensaje: "Pedido eliminado correctamente",
+            mensaje: 'Pedido eliminado correctamente',
         });
     } catch (error) {
         res.status(500).json({

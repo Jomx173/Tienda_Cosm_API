@@ -1,13 +1,17 @@
-const express = require("express");
+'use strict';
+
+const express = require('express');
+const pedidoController = require('../Controllers/pedidoController');
+const isAuth = require('../middlewares/auth');
+const role = require('../middlewares/role');
+
 const router = express.Router();
 
-const pedidoController = require("../controllers/pedidoController");
-const { verificarToken } = require("../Middleware/auth");
+router.post('/', pedidoController.crearPedido);
 
-router.post("/", pedidoController.crearPedido);
-router.get("/", verificarToken, pedidoController.obtenerPedidos);
-router.get("/:id", verificarToken, pedidoController.obtenerPedido);
-router.put("/:id/estado", verificarToken, pedidoController.actualizarEstadoPedido);
-router.delete("/:id", verificarToken, pedidoController.eliminarPedido);
+router.get('/', isAuth, role.isAdmin, pedidoController.obtenerPedidos);
+router.get('/:id', isAuth, role.isAdmin, pedidoController.obtenerPedido);
+router.put('/:id/estado', isAuth, role.isAdmin, pedidoController.actualizarEstadoPedido);
+router.delete('/:id', isAuth, role.isAdmin, pedidoController.eliminarPedido);
 
 module.exports = router;

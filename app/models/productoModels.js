@@ -1,9 +1,9 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/db");
+'use strict';
 
-const Producto = sequelize.define(
-    "Producto",
-    {
+const { DataTypes } = require('sequelize');
+
+module.exports = (sequelize) => {
+    const Producto = sequelize.define('Producto', {
         id_producto: {
             type: DataTypes.INTEGER,
             primaryKey: true,
@@ -53,11 +53,10 @@ const Producto = sequelize.define(
             type: DataTypes.INTEGER,
             allowNull: false,
         },
-    },
-    {
-        tableName: "Producto",
+    }, {
+        tableName: 'Producto',
         timestamps: false,
-    }
-);
+    });
 
-module.exports = Producto;
+    return Producto;
+};

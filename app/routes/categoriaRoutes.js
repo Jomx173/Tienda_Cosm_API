@@ -1,13 +1,17 @@
-const express = require("express");
+'use strict';
+
+const express = require('express');
+const categoriaController = require('../Controllers/categoriaController');
+const isAuth = require('../middlewares/auth');
+const role = require('../middlewares/role');
+
 const router = express.Router();
 
-const categoriaController = require("../controllers/categoriaController");
-const { verificarToken } = require("../Middleware/auth");
+router.get('/', categoriaController.obtenerCategorias);
+router.get('/:id', categoriaController.obtenerCategoria);
 
-router.get("/", categoriaController.obtenerCategorias);
-router.get("/:id", categoriaController.obtenerCategoria);
-router.post("/", verificarToken, categoriaController.crearCategoria);
-router.put("/:id", verificarToken, categoriaController.actualizarCategoria);
-router.delete("/:id", verificarToken, categoriaController.eliminarCategoria);
+router.post('/', isAuth, role.isAdmin, categoriaController.crearCategoria);
+router.put('/:id', isAuth, role.isAdmin, categoriaController.actualizarCategoria);
+router.delete('/:id', isAuth, role.isAdmin, categoriaController.eliminarCategoria);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 node_modules
 .env
+*.log
 
 # Imágenes subidas por el admin (datos de runtime, no código)
 app/uploads/*

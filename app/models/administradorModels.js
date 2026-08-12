@@ -1,9 +1,9 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/db");
+'use strict';
 
-const Administrador = sequelize.define(
-    "Administrador",
-    {
+const { DataTypes } = require('sequelize');
+
+module.exports = (sequelize) => {
+    const attributes = {
         id_admin: {
             type: DataTypes.INTEGER,
             primaryKey: true,
@@ -30,11 +30,22 @@ const Administrador = sequelize.define(
             type: DataTypes.BOOLEAN,
             defaultValue: true,
         },
-    },
-    {
-        tableName: "Administrador",
-        timestamps: false,
-    }
-);
+    };
 
-module.exports = Administrador;
+    const options = {
+        defaultScope: {
+            attributes: {
+                exclude: ['password'],
+            },
+        },
+        scopes: {
+            withPassword: {
+                attributes: {},
+            },
+        },
+        tableName: 'Administrador',
+        timestamps: false,
+    };
+
+    return sequelize.define('Administrador', attributes, options);
+};
