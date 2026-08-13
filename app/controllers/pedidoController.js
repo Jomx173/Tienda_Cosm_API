@@ -228,23 +228,43 @@ const actualizarEstadoPedido = async (req, res) => {
 
 // Eliminar un pedido
 const eliminarPedido = async (req, res) => {
+    const transaction = await db.sequelizeInstance.transaction();
+
     try {
-        const pedido = await Pedido.findByPk(req.params.id);
+        const pedido = await Pedido.findByPk(req.params.id, {
+            transaction,
+        });
 
         if (!pedido) {
+            await transaction.rollback();
             return res.status(404).json({
                 ok: false,
                 mensaje: 'Pedido no encontrado',
             });
         }
 
-        await pedido.destroy();
+        await DetallePedido.destroy({
+            where: {
+                id_pedido: pedido.id_pedido,
+            },
+            transaction,
+        });
+
+        await pedido.destroy({
+            transaction,
+        });
+
+        await transaction.commit();
 
         res.status(200).json({
             ok: true,
             mensaje: 'Pedido eliminado correctamente',
         });
     } catch (error) {
+        if (!transaction.finished) {
+            await transaction.rollback();
+        }
+
         res.status(500).json({
             ok: false,
             mensaje: error.message,
