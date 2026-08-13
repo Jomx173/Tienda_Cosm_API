@@ -15,7 +15,7 @@ module.exports = (sequelize) => {
         },
         id_producto: {
             type: DataTypes.INTEGER,
-            allowNull: false,
+            allowNull: true,
         },
         cantidad: {
             type: DataTypes.INTEGER,
