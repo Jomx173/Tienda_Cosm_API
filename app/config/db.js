@@ -40,6 +40,7 @@ db.categoria = require('../models/categoriaModels')(sequelizeInstance);
 db.producto = require('../models/productoModels')(sequelizeInstance);
 db.banner = require('../models/bannerModels')(sequelizeInstance);
 db.pedido = require('../models/pedidoModels')(sequelizeInstance);
+db.detallepedido = require('../models/detallepedidoModels')(sequelizeInstance);
 db.administrador = require('../models/administradorModels')(sequelizeInstance);
 
 /* =======================
@@ -54,6 +55,31 @@ db.categoria.hasMany(db.producto, {
 db.producto.belongsTo(db.categoria, {
     foreignKey: 'id_categoria',
     as: 'categoria',
+});
+
+
+/* =======================
+   PEDIDO -> DETALLEPEDIDO
+======================= */
+
+db.pedido.hasMany(db.detallepedido, {
+    foreignKey: 'id_pedido',
+    as: 'detalles',
+});
+
+db.detallepedido.belongsTo(db.pedido, {
+    foreignKey: 'id_pedido',
+    as: 'pedido',
+});
+
+db.producto.hasMany(db.detallepedido, {
+    foreignKey: 'id_producto',
+    as: 'detallesPedido',
+});
+
+db.detallepedido.belongsTo(db.producto, {
+    foreignKey: 'id_producto',
+    as: 'producto',
 });
 
 module.exports = db;

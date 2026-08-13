@@ -3,6 +3,8 @@
 const db = require('../config/db');
 
 const Pedido = db.pedido;
+const DetallePedido = db.detallepedido;
+const Producto = db.producto;
 
 const formatearPedido = (pedido) => ({
     ...pedido.toJSON(),
@@ -92,26 +94,94 @@ const crearPedido = async (req, res) => {
             });
         }
 
-        const productos = Array.isArray(datos.productos) ? datos.productos : [];
+        const productos = datos.productos;
+
+        for (const item of productos) {
+            const idProducto = Number(item.id_producto);
+            const cantidad = Number(item.cantidad);
+            const precio = Number(item.precio);
+
+            if (!Number.isInteger(idProducto) || idProducto <= 0) {
+                return res.status(400).json({
+                    ok: false,
+                    mensaje: 'Uno o más productos tienen un ID inválido',
+                });
+            }
+
+            if (!Number.isInteger(cantidad) || cantidad <= 0) {
+                return res.status(400).json({
+                    ok: false,
+                    mensaje: 'La cantidad de un producto no es válida',
+                });
+            }
+
+            if (!Number.isFinite(precio) || precio < 0) {
+                return res.status(400).json({
+                    ok: false,
+                    mensaje: 'El precio de un producto no es válido',
+                });
+            }
+        }
+
         const total = productos.reduce(
             (suma, item) => suma + Number(item.precio) * Number(item.cantidad),
             0
         );
 
-        const pedido = await Pedido.create({
-            nombre_cliente: datos.nombre_cliente || '',
-            telefono_cliente: datos.telefono_cliente || '',
-            direccion: datos.direccion || '',
-            productos: JSON.stringify(productos),
-            total,
-            estado: 'pendiente',
-        });
+        const transaction = await db.sequelizeInstance.transaction();
 
-        res.status(201).json({
-            ok: true,
-            mensaje: 'Pedido creado correctamente',
-            data: formatearPedido(pedido),
-        });
+        try {
+            for (const item of productos) {
+                const productoExiste = await Producto.findByPk(
+                    Number(item.id_producto),
+                    { transaction }
+                );
+
+                if (!productoExiste) {
+                    throw new Error(
+                        `El producto con ID ${item.id_producto} no existe`
+                    );
+                }
+            }
+
+            const pedido = await Pedido.create({
+                nombre_cliente: datos.nombre_cliente || '',
+                telefono_cliente: datos.telefono_cliente || '',
+                direccion: datos.direccion || '',
+                productos: JSON.stringify(productos),
+                total,
+                estado: 'pendiente',
+            }, {
+                transaction,
+            });
+
+            for (const item of productos) {
+                const cantidad = Number(item.cantidad);
+                const precio = Number(item.precio);
+                const subtotal = precio * cantidad;
+
+                await DetallePedido.create({
+                    id_pedido: pedido.id_pedido,
+                    id_producto: Number(item.id_producto),
+                    cantidad,
+                    precio,
+                    subtotal,
+                }, {
+                    transaction,
+                });
+            }
+
+            await transaction.commit();
+
+            res.status(201).json({
+                ok: true,
+                mensaje: 'Pedido creado correctamente',
+                data: formatearPedido(pedido),
+            });
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
     } catch (error) {
         res.status(500).json({
             ok: false,
