@@ -36,6 +36,9 @@ app.use('/api/auth', authRoutes);
 const administradorRoutes = require('./routes/administradorRoutes');
 app.use('/api/administradores', administradorRoutes);
 
+const inventarioRoutes = require('./routes/inventarioRoutes');
+app.use('/api/inventario', inventarioRoutes);
+
 // Manejo de errores en JSON (subidas de multer, etc.)
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);

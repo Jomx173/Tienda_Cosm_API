@@ -8,3 +8,6 @@ app/uploads/*
 
 .vercel
 .env*
+
+# Copias de seguridad del inventario (datos reales: nunca al repositorio)
+backups/

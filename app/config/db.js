@@ -1,7 +1,24 @@
 'use strict';
 
 const Sequelize = require('sequelize');
-require('dotenv').config();
+const dotenv = require('dotenv');
+const path = require('path');
+const fs = require('fs');
+
+// En local tiene prioridad .env.local (BD local de desarrollo).
+// En Vercel no existe ese archivo, por lo que sigue comportandose igual.
+const RUTA_ENV_LOCAL = path.join(__dirname, '..', '..', '.env.local');
+
+if (fs.existsSync(RUTA_ENV_LOCAL)) {
+    dotenv.config({ path: RUTA_ENV_LOCAL });
+}
+
+dotenv.config();
+
+// SSL solo si el servidor lo pide explicitamente (Aiven en produccion).
+const usarSSL = ['1', 'true', 'yes'].includes(
+    String(process.env.DB_SSL ?? '1').toLowerCase()
+);
 
 const sequelizeInstance = new Sequelize(
     process.env.DB_NAME,
@@ -12,12 +29,14 @@ const sequelizeInstance = new Sequelize(
         port: process.env.DB_PORT,
         dialect: 'mysql',
         logging: false,
-        dialectOptions: {
-            ssl: {
-                require: true,
-                rejectUnauthorized: false,
-            },
-        },
+        dialectOptions: usarSSL
+            ? {
+                ssl: {
+                    require: true,
+                    rejectUnauthorized: false,
+                },
+            }
+            : {},
         pool: {
             max: parseInt(process.env.POOL_MAX) || 5,
             min: parseInt(process.env.POOL_MIN) || 0,
@@ -38,6 +57,9 @@ db.sequelizeInstance = sequelizeInstance;
 
 db.categoria = require('../models/categoriaModels')(sequelizeInstance);
 db.producto = require('../models/productoModels')(sequelizeInstance);
+db.productoVariante = require('../models/productoVarianteModels')(sequelizeInstance);
+db.productoImagen = require('../models/productoImagenModels')(sequelizeInstance);
+db.movimientoInventario = require('../models/movimientoInventarioModels')(sequelizeInstance);
 db.banner = require('../models/bannerModels')(sequelizeInstance);
 db.pedido = require('../models/pedidoModels')(sequelizeInstance);
 db.detallepedido = require('../models/detallepedidoModels')(sequelizeInstance);
@@ -80,6 +102,57 @@ db.producto.hasMany(db.detallepedido, {
 db.detallepedido.belongsTo(db.producto, {
     foreignKey: 'id_producto',
     as: 'producto',
+});
+
+/* =======================
+   PRODUCTO -> VARIANTES / IMAGENES
+   (Nuevas tablas. Producto, Pedido y detallepedido se mantienen intactos
+    para conservar compatibilidad con los productos antiguos.)
+======================= */
+
+db.producto.hasMany(db.productoVariante, {
+    foreignKey: 'id_producto',
+    as: 'variantes',
+    onDelete: 'CASCADE',
+});
+
+db.productoVariante.belongsTo(db.producto, {
+    foreignKey: 'id_producto',
+    as: 'producto',
+});
+
+db.producto.hasMany(db.productoImagen, {
+    foreignKey: 'id_producto',
+    as: 'imagenes',
+    onDelete: 'CASCADE',
+});
+
+db.productoImagen.belongsTo(db.producto, {
+    foreignKey: 'id_producto',
+    as: 'producto',
+});
+
+db.productoVariante.hasMany(db.productoImagen, {
+    foreignKey: 'id_variante',
+    as: 'imagenes',
+    onDelete: 'CASCADE',
+});
+
+db.productoImagen.belongsTo(db.productoVariante, {
+    foreignKey: 'id_variante',
+    as: 'variante',
+});
+
+// Relacion opcional detallepedido -> variante (los pedidos antiguos no la tienen)
+db.productoVariante.hasMany(db.detallepedido, {
+    foreignKey: 'id_variante',
+    as: 'detalles',
+    onDelete: 'SET NULL',
+});
+
+db.detallepedido.belongsTo(db.productoVariante, {
+    foreignKey: 'id_variante',
+    as: 'variante',
 });
 
 module.exports = db;

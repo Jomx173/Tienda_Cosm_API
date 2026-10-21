@@ -5,6 +5,8 @@ const db = require('../config/db');
 const Pedido = db.pedido;
 const DetallePedido = db.detallepedido;
 const Producto = db.producto;
+const ProductoVariante = db.productoVariante;
+const { recalcularStockProducto } = require('./productoController');
 
 const formatearPedido = (pedido) => ({
     ...pedido.toJSON(),
@@ -121,6 +123,17 @@ const crearPedido = async (req, res) => {
                     mensaje: 'El precio de un producto no es válido',
                 });
             }
+
+            if (item.id_variante !== undefined && item.id_variante !== null && item.id_variante !== '') {
+                const idVariante = Number(item.id_variante);
+
+                if (!Number.isInteger(idVariante) || idVariante <= 0) {
+                    return res.status(400).json({
+                        ok: false,
+                        mensaje: 'Una o más variantes tienen un ID inválido',
+                    });
+                }
+            }
         }
 
         const total = productos.reduce(
@@ -131,15 +144,62 @@ const crearPedido = async (req, res) => {
         const transaction = await db.sequelizeInstance.transaction();
 
         try {
+            const productosAfectados = new Set();
+
             for (const item of productos) {
-                const productoExiste = await Producto.findByPk(
-                    Number(item.id_producto),
-                    { transaction }
-                );
+                const idProducto = Number(item.id_producto);
+                const cantidad = Number(item.cantidad);
+
+                const productoExiste = await Producto.findByPk(idProducto, { transaction });
 
                 if (!productoExiste) {
                     throw new Error(
                         `El producto con ID ${item.id_producto} no existe`
+                    );
+                }
+
+                const idVariante =
+                    item.id_variante === undefined || item.id_variante === null || item.id_variante === ''
+                        ? null
+                        : Number(item.id_variante);
+
+                if (idVariante) {
+                    const variante = await ProductoVariante.findOne({
+                        where: { id_variante: idVariante, id_producto: idProducto },
+                        transaction,
+                    });
+
+                    if (!variante) {
+                        throw new Error(
+                            `El tono seleccionado del producto "${productoExiste.nombre}" ya no está disponible`
+                        );
+                    }
+
+                    if (Number(variante.stock) < cantidad) {
+                        throw new Error(
+                            `Solo quedan ${Number(variante.stock)} unidad(es) del tono "${variante.tono}"`
+                        );
+                    }
+
+                    // Reservar inventario de la variante seleccionada
+                    await variante.update(
+                        { stock: Number(variante.stock) - cantidad },
+                        { transaction }
+                    );
+
+                    item.tono = variante.tono;
+                    item.codigo = variante.codigo || productoExiste.codigo || '';
+                    productosAfectados.add(idProducto);
+                } else {
+                    if (Number(productoExiste.stock) < cantidad) {
+                        throw new Error(
+                            `Solo quedan ${Number(productoExiste.stock)} unidad(es) de "${productoExiste.nombre}"`
+                        );
+                    }
+
+                    await productoExiste.update(
+                        { stock: Number(productoExiste.stock) - cantidad },
+                        { transaction }
                     );
                 }
             }
@@ -159,16 +219,28 @@ const crearPedido = async (req, res) => {
                 const cantidad = Number(item.cantidad);
                 const precio = Number(item.precio);
                 const subtotal = precio * cantidad;
+                const idVariante =
+                    item.id_variante === undefined || item.id_variante === null || item.id_variante === ''
+                        ? null
+                        : Number(item.id_variante);
 
                 await DetallePedido.create({
                     id_pedido: pedido.id_pedido,
                     id_producto: Number(item.id_producto),
+                    id_variante: idVariante,
+                    tono: item.tono || null,
+                    codigo: item.codigo || null,
                     cantidad,
                     precio,
                     subtotal,
                 }, {
                     transaction,
                 });
+            }
+
+            // El stock del producto principal refleja la suma de sus variantes
+            for (const idProducto of productosAfectados) {
+                await recalcularStockProducto(idProducto, transaction);
             }
 
             await transaction.commit();

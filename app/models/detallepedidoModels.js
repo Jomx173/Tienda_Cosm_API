@@ -17,6 +17,19 @@ module.exports = (sequelize) => {
             type: DataTypes.INTEGER,
             allowNull: true,
         },
+        // Nuevos campos: las filas antiguas quedan con NULL, sin romper nada.
+        id_variante: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+        },
+        tono: {
+            type: DataTypes.STRING(80),
+            allowNull: true,
+        },
+        codigo: {
+            type: DataTypes.STRING(80),
+            allowNull: true,
+        },
         cantidad: {
             type: DataTypes.INTEGER,
             allowNull: false,
