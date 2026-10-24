@@ -2,7 +2,7 @@
 
 const express = require('express');
 
-const inventarioController = require('../Controllers/inventarioController');
+const inventarioController = require('../controllers/inventarioController');
 const isAuth = require('../middlewares/auth');
 const role = require('../middlewares/role');
 
