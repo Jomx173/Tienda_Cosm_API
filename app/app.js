@@ -49,7 +49,7 @@ app.use((err, req, res, next) => {
         ok: false,
         mensaje:
             err.code === 'LIMIT_FILE_SIZE'
-                ? 'La imagen supera el tamaño máximo de 5 MB.'
+                ? 'La imagen supera el tamaño máximo de 10 MB.'
                 : err.message || 'Error al procesar la solicitud.',
     });
 });
