@@ -12,8 +12,8 @@ router.get('/', productoController.obtenerProductos);
 router.get('/duplicados', isAuth, role.isAdmin, productoController.buscarDuplicadosHandler);
 router.get('/:id', productoController.obtenerProducto);
 
-router.post('/', isAuth, role.isAdmin, upload.single('imagen'), productoController.crearProducto);
-router.put('/:id', isAuth, role.isAdmin, upload.single('imagen'), productoController.actualizarProducto);
+router.post('/', isAuth, role.isAdmin, upload.productosUpload, productoController.crearProducto);
+router.put('/:id', isAuth, role.isAdmin, upload.productosUpload, productoController.actualizarProducto);
 router.delete('/:id', isAuth, role.isAdmin, productoController.eliminarProducto);
 
 /* =======================
@@ -32,7 +32,7 @@ router.post(
     '/:id/imagenes',
     isAuth,
     role.isAdmin,
-    upload.array('imagenes', 12),
+    upload.array('imagenes', 8),
     productoController.subirImagenes
 );
 

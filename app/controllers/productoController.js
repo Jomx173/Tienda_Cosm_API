@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const db = require('../config/db');
 
 const Producto = db.producto;
@@ -48,15 +50,31 @@ const incluirRelaciones = () => [
 ];
 
 const limpiarRelaciones = (producto) => {
-    const json = producto.toJSON();
+    const json = producto.toJSON ? producto.toJSON() : producto;
 
     json.variantes = (json.variantes || []).map((v) => ({
         ...v,
         imagenes: v.imagenes || [],
     }));
 
-    json.imagenes = (json.imagenes || []).filter(
+    const imagenesGenerales = (json.imagenes || []).filter(
         (img) => img.id_variante === null || img.id_variante === undefined
+    );
+
+    // Compatibilidad: si el producto tiene imagen principal y no figura en imagenesGenerales,
+    // incluirla para que la galería siempre contenga la foto principal.
+    if (json.imagen && !imagenesGenerales.some((img) => img.imagen === json.imagen)) {
+        imagenesGenerales.unshift({
+            id_imagen: 0,
+            id_producto: json.id_producto,
+            id_variante: null,
+            imagen: json.imagen,
+            orden: 0,
+        });
+    }
+
+    json.imagenes = imagenesGenerales.sort(
+        (a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.id_imagen - b.id_imagen
     );
 
     // Compatibilidad: el stock del producto principal sigue existiendo.
@@ -69,6 +87,36 @@ const limpiarRelaciones = (producto) => {
     }
 
     return json;
+};
+
+/**
+ * Elimina un archivo de la carpeta uploads si ninguna entidad lo sigue usando.
+ * Seguro e idempotente.
+ */
+const eliminarArchivoSiNoSeUsa = async (rutaRelativa) => {
+    if (!rutaRelativa || typeof rutaRelativa !== 'string') return;
+    if (!rutaRelativa.startsWith('/uploads/')) return;
+
+    try {
+        const nombreArchivo = path.basename(rutaRelativa);
+        const rutaCompleta = path.join(__dirname, '..', 'uploads', nombreArchivo);
+
+        const enProducto = await Producto.count({ where: { imagen: rutaRelativa } });
+        if (enProducto > 0) return;
+
+        const enImagenes = await ProductoImagen.count({ where: { imagen: rutaRelativa } });
+        if (enImagenes > 0) return;
+
+        const enBanner = await db.banner.count({ where: { imagen: rutaRelativa } });
+        if (enBanner > 0) return;
+
+        if (fs.existsSync(rutaCompleta)) {
+            await fs.promises.unlink(rutaCompleta);
+            console.log(`🗑️ Archivo huérfano eliminado de uploads: ${nombreArchivo}`);
+        }
+    } catch (err) {
+        console.warn(`No se pudo eliminar el archivo en disco (${rutaRelativa}):`, err.message);
+    }
 };
 
 // Obtener todos los productos activos (o todos si se pide)
@@ -132,8 +180,6 @@ const parsearVariantes = (entrada) => {
         try {
             datos = JSON.parse(texto);
         } catch {
-            // Tolerante a JSON sin comillas en las claves/valores
-            // (algunos clientes multipart las eliminan).
             try {
                 const reparado = texto
                     .replace(/([{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":')
@@ -146,7 +192,6 @@ const parsearVariantes = (entrada) => {
         }
     }
 
-    // Puede llegar como array o como un unico objeto (crear/editar una variante)
     if (!Array.isArray(datos)) {
         datos = [datos];
     }
@@ -187,18 +232,56 @@ const recalcularStockProducto = async (idProducto, transaction = null) => {
     return total;
 };
 
-// Crear producto (admite "variantes" como JSON en el body)
+// Crear producto (admite múltiples fotos y variantes sin imagen)
 const crearProducto = async (req, res) => {
     const transaction = await sequelize.transaction();
 
     try {
         const datos = req.body;
 
-        if (req.file) {
-            datos.imagen = req.file.path;
+        const archivos = [
+            ...(req.files?.imagenes || []),
+            ...(req.files?.imagen || []),
+            ...(req.file ? [req.file] : []),
+        ];
+
+        let indicePrincipal = 0;
+        if (datos.indice_principal !== undefined && datos.indice_principal !== null && datos.indice_principal !== '') {
+            indicePrincipal = Math.max(0, Math.min(Number(datos.indice_principal) || 0, archivos.length - 1));
+        } else if (datos.indice_principal_nuevo !== undefined && datos.indice_principal_nuevo !== null && datos.indice_principal_nuevo !== '') {
+            indicePrincipal = Math.max(0, Math.min(Number(datos.indice_principal_nuevo) || 0, archivos.length - 1));
         }
 
+        if (archivos.length > 0) {
+            datos.imagen = archivos[indicePrincipal].path;
+        }
+
+        delete datos.indice_principal;
+        delete datos.indice_principal_nuevo;
+        delete datos.imagen_principal;
+        delete datos.id_imagen_principal;
+        delete datos.imagenes_eliminar;
+        delete datos.imagenes_orden;
+
         const producto = await Producto.create(normalizarDatos(datos), { transaction });
+
+        if (archivos.length > 0) {
+            for (let i = 0; i < archivos.length; i++) {
+                await ProductoImagen.create({
+                    id_producto: producto.id_producto,
+                    id_variante: null,
+                    imagen: archivos[i].path,
+                    orden: i,
+                }, { transaction });
+            }
+        } else if (datos.imagen && typeof datos.imagen === 'string' && datos.imagen.trim()) {
+            await ProductoImagen.create({
+                id_producto: producto.id_producto,
+                id_variante: null,
+                imagen: datos.imagen.trim(),
+                orden: 0,
+            }, { transaction });
+        }
 
         const variantes = parsearVariantes(datos.variantes);
 
@@ -234,17 +317,13 @@ const crearProducto = async (req, res) => {
     }
 };
 
-// Actualizar producto (nunca borra variantes existentes)
+// Actualizar producto (admite agregar nuevas fotos, eliminar fotos específicas, reordenar y cambiar foto principal)
 const actualizarProducto = async (req, res) => {
     const transaction = await sequelize.transaction();
+    const archivosAEvaluarBorrado = [];
 
     try {
         const datos = req.body;
-
-        if (req.file) {
-            datos.imagen = req.file.path;
-        }
-
         const producto = await Producto.findByPk(req.params.id, { transaction });
 
         if (!producto) {
@@ -256,11 +335,160 @@ const actualizarProducto = async (req, res) => {
             });
         }
 
+        // 1. Eliminar imágenes marcadas (si vienen en imagenes_eliminar)
+        let idsEliminar = [];
+        if (datos.imagenes_eliminar) {
+            try {
+                idsEliminar = typeof datos.imagenes_eliminar === 'string'
+                    ? JSON.parse(datos.imagenes_eliminar)
+                    : datos.imagenes_eliminar;
+            } catch {
+                idsEliminar = [];
+            }
+        }
+
+        if (Array.isArray(idsEliminar) && idsEliminar.length > 0) {
+            const imagenesABorrar = await ProductoImagen.findAll({
+                where: {
+                    id_imagen: idsEliminar,
+                    id_producto: producto.id_producto,
+                },
+                transaction,
+            });
+
+            for (const img of imagenesABorrar) {
+                archivosAEvaluarBorrado.push(img.imagen);
+                await img.destroy({ transaction });
+            }
+        }
+
+        // 2. Actualizar el orden de las imágenes existentes si viene imagenes_orden
+        if (datos.imagenes_orden) {
+            let listaOrden = [];
+            try {
+                listaOrden = typeof datos.imagenes_orden === 'string'
+                    ? JSON.parse(datos.imagenes_orden)
+                    : datos.imagenes_orden;
+            } catch {
+                listaOrden = [];
+            }
+
+            if (Array.isArray(listaOrden)) {
+                for (const item of listaOrden) {
+                    if (item && item.id_imagen && Number.isFinite(Number(item.orden))) {
+                        await ProductoImagen.update(
+                            { orden: Number(item.orden) },
+                            {
+                                where: {
+                                    id_imagen: Number(item.id_imagen),
+                                    id_producto: producto.id_producto,
+                                },
+                                transaction,
+                            }
+                        );
+                    }
+                }
+            }
+        }
+
+        // 3. Subir nuevas imágenes adjuntas
+        const archivosNuevos = [
+            ...(req.files?.imagenes || []),
+            ...(req.files?.imagen || []),
+            ...(req.file ? [req.file] : []),
+        ];
+
+        const maxOrdenActual = await ProductoImagen.max('orden', {
+            where: { id_producto: producto.id_producto, id_variante: null },
+            transaction,
+        }) || 0;
+
+        let siguienteOrden = Number(maxOrdenActual) + 1;
+        for (let i = 0; i < archivosNuevos.length; i++) {
+            await ProductoImagen.create({
+                id_producto: producto.id_producto,
+                id_variante: null,
+                imagen: archivosNuevos[i].path,
+                orden: siguienteOrden + i,
+            }, { transaction });
+        }
+
+        // 4. Determinar la imagen principal del producto
+        let nuevaImagenPrincipal = undefined;
+
+        if (datos.indice_principal_nuevo !== undefined && datos.indice_principal_nuevo !== null && datos.indice_principal_nuevo !== '') {
+            const idxNuevo = Number(datos.indice_principal_nuevo);
+            if (archivosNuevos[idxNuevo]) {
+                nuevaImagenPrincipal = archivosNuevos[idxNuevo].path;
+            }
+        } else if (datos.id_imagen_principal) {
+            const imgP = await ProductoImagen.findOne({
+                where: {
+                    id_imagen: Number(datos.id_imagen_principal),
+                    id_producto: producto.id_producto,
+                },
+                transaction,
+            });
+            if (imgP) {
+                nuevaImagenPrincipal = imgP.imagen;
+            }
+        } else if (datos.imagen_principal && typeof datos.imagen_principal === 'string' && datos.imagen_principal.trim()) {
+            nuevaImagenPrincipal = datos.imagen_principal.trim();
+        }
+
+        if (nuevaImagenPrincipal !== undefined) {
+            datos.imagen = nuevaImagenPrincipal;
+        } else {
+            // Si la imagen actual fue eliminada o no existe, seleccionar la primera disponible
+            const imgActualSigue = producto.imagen
+                ? await ProductoImagen.findOne({
+                    where: { id_producto: producto.id_producto, imagen: producto.imagen },
+                    transaction,
+                })
+                : null;
+
+            if (!imgActualSigue) {
+                const primeraRestante = await ProductoImagen.findOne({
+                    where: { id_producto: producto.id_producto, id_variante: null },
+                    order: [['orden', 'ASC'], ['id_imagen', 'ASC']],
+                    transaction,
+                });
+                datos.imagen = primeraRestante ? primeraRestante.imagen : null;
+            }
+        }
+
         delete datos.variantes;
+        delete datos.imagenes_eliminar;
+        delete datos.imagenes_orden;
+        delete datos.imagen_principal;
+        delete datos.id_imagen_principal;
+        delete datos.indice_principal_nuevo;
+        delete datos.indice_principal;
 
         await producto.update(normalizarDatos(datos), { transaction });
 
+        // Asegurar que producto.imagen exista en producto_imagen si no está registrada
+        if (producto.imagen) {
+            const existeEnTabla = await ProductoImagen.findOne({
+                where: { id_producto: producto.id_producto, imagen: producto.imagen },
+                transaction,
+            });
+            if (!existeEnTabla) {
+                await ProductoImagen.create({
+                    id_producto: producto.id_producto,
+                    id_variante: null,
+                    imagen: producto.imagen,
+                    orden: 0,
+                }, { transaction });
+            }
+        }
+
         await transaction.commit();
+
+        // Limpieza de archivos en disco si ya no los usa nada más
+        for (const ruta of archivosAEvaluarBorrado) {
+            await eliminarArchivoSiNoSeUsa(ruta);
+        }
 
         const completo = await Producto.findByPk(req.params.id, {
             include: incluirRelaciones(),
@@ -284,6 +512,7 @@ const actualizarProducto = async (req, res) => {
 // Eliminar un producto (borrado físico limpiando detalles asociados)
 const eliminarProducto = async (req, res) => {
     const transaction = await sequelize.transaction();
+    const archivosAEvaluarBorrado = [];
 
     try {
         const producto = await Producto.findByPk(req.params.id, { transaction });
@@ -297,9 +526,26 @@ const eliminarProducto = async (req, res) => {
             });
         }
 
+        const imagenes = await ProductoImagen.findAll({
+            where: { id_producto: producto.id_producto },
+            attributes: ['imagen'],
+            transaction,
+        });
+
+        for (const img of imagenes) {
+            if (img.imagen) archivosAEvaluarBorrado.push(img.imagen);
+        }
+        if (producto.imagen) {
+            archivosAEvaluarBorrado.push(producto.imagen);
+        }
+
         await producto.destroy({ transaction });
 
         await transaction.commit();
+
+        for (const ruta of archivosAEvaluarBorrado) {
+            await eliminarArchivoSiNoSeUsa(ruta);
+        }
 
         res.status(200).json({
             ok: true,
@@ -534,7 +780,21 @@ const eliminarImagen = async (req, res) => {
             });
         }
 
+        const ruta = imagen.imagen;
+        const idProd = imagen.id_producto;
+
         await imagen.destroy();
+
+        const prod = await Producto.findByPk(idProd);
+        if (prod && prod.imagen === ruta) {
+            const siguiente = await ProductoImagen.findOne({
+                where: { id_producto: idProd, id_variante: null },
+                order: [['orden', 'ASC'], ['id_imagen', 'ASC']],
+            });
+            await prod.update({ imagen: siguiente ? siguiente.imagen : null });
+        }
+
+        await eliminarArchivoSiNoSeUsa(ruta);
 
         res.status(200).json({
             ok: true,

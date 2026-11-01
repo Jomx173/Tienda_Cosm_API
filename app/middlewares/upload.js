@@ -78,6 +78,30 @@ const normalizarArchivos = (archivos) => {
     }
 };
 
+// Borra del disco los archivos que multer ya escribio pero que se rechazan
+// despues (por ejemplo, por superar el maximo de 8). Sin esto quedarian
+// archivos huerfanos en uploads/.
+const descartarArchivos = (...grupos) => {
+    for (const grupo of grupos) {
+        if (!grupo) continue;
+
+        const lista = Array.isArray(grupo) ? grupo : [grupo];
+
+        for (const archivo of lista) {
+            const ruta = archivo && archivo.path;
+
+            // Solo rutas locales; las URLs de Cloudinary no viven en disco.
+            if (ruta && !/^https?:\/\//i.test(ruta)) {
+                try {
+                    fs.unlinkSync(ruta);
+                } catch {
+                    // El archivo puede no existir: no hay nada que limpiar.
+                }
+            }
+        }
+    }
+};
+
 module.exports = {
     single: (campo) => (req, res, next) =>
         upload.single(campo)(req, res, (err) => {
@@ -90,6 +114,39 @@ module.exports = {
         upload.array(campo, maximo)(req, res, (err) => {
             if (err) return next(err);
             normalizarArchivos(req.files);
+            next();
+        }),
+
+    productosUpload: (req, res, next) =>
+        upload.fields([
+            { name: 'imagenes', maxCount: 8 },
+            { name: 'imagen', maxCount: 8 },
+        ])(req, res, (err) => {
+            if (err) return next(err);
+
+            // Máximo 8 fotos por producto en total (la galería acepta hasta 8)
+            const total =
+                (req.files?.imagenes?.length || 0) + (req.files?.imagen?.length || 0);
+            if (total > 8) {
+                // multer ya escribió los archivos: hay que borrarlos para no
+                // dejar archivos huérfanos en uploads/.
+                descartarArchivos(req.files?.imagenes, req.files?.imagen);
+
+                return next(
+                    Object.assign(
+                        new Error('Se superó el número máximo de imágenes permitidas (máximo 8).'),
+                        { code: 'LIMIT_FILE_COUNT' }
+                    )
+                );
+            }
+
+            if (req.files) {
+                if (req.files.imagenes) normalizarArchivos(req.files.imagenes);
+                if (req.files.imagen) normalizarArchivos(req.files.imagen);
+            }
+            if (req.file) {
+                normalizarArchivos(req.file);
+            }
             next();
         }),
 };

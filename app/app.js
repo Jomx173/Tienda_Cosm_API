@@ -8,8 +8,8 @@ const fs = require('fs');
 const app = express();
 
 app.use(cors({ origin: '*' }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Archivos subidos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -39,18 +39,27 @@ app.use('/api/administradores', administradorRoutes);
 const inventarioRoutes = require('./routes/inventarioRoutes');
 app.use('/api/inventario', inventarioRoutes);
 
-// Manejo de errores en JSON (subidas de multer, etc.)
+// Manejo de errores en JSON (subidas de multer, tamaño excedido, etc.)
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
 
-    const estatus = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    let estatus = 400;
+    let mensaje = err.message || 'Error al procesar la solicitud.';
+
+    if (err.code === 'LIMIT_FILE_SIZE') {
+        estatus = 413;
+        mensaje = 'Una de las imágenes supera el tamaño máximo de 10 MB.';
+    } else if (err.code === 'LIMIT_FILE_COUNT') {
+        estatus = 400;
+        mensaje = 'Se superó el número máximo de imágenes permitidas (máximo 8).';
+    } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        estatus = 400;
+        mensaje = 'Campo de archivo no esperado o exceso de imágenes.';
+    }
 
     res.status(estatus).json({
         ok: false,
-        mensaje:
-            err.code === 'LIMIT_FILE_SIZE'
-                ? 'La imagen supera el tamaño máximo de 10 MB.'
-                : err.message || 'Error al procesar la solicitud.',
+        mensaje,
     });
 });
 
