@@ -7,6 +7,7 @@ const DetallePedido = db.detallepedido;
 const Producto = db.producto;
 const ProductoVariante = db.productoVariante;
 const { recalcularStockProducto } = require('./productoController');
+const { enviarPushANuevosPedidos } = require('./pushController');
 
 const formatearPedido = (pedido) => ({
     ...pedido.toJSON(),
@@ -244,6 +245,16 @@ const crearPedido = async (req, res) => {
             }
 
             await transaction.commit();
+
+            const cantidadProductos = productos.reduce(
+                (suma, item) => suma + Number(item.cantidad),
+                0
+            );
+            await enviarPushANuevosPedidos(
+                pedido.id_pedido,
+                total,
+                cantidadProductos
+            );
 
             res.status(201).json({
                 ok: true,

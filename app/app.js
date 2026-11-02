@@ -30,6 +30,9 @@ app.use('/api/banners', bannerRoutes);
 const pedidoRoutes = require('./routes/pedidoRoutes');
 app.use('/api/pedidos', pedidoRoutes);
 
+const pushRoutes = require('./routes/pushRoutes');
+app.use('/api/push', pushRoutes);
+
 const authRoutes = require('./routes/authRoutes');
 app.use('/api/auth', authRoutes);
 
