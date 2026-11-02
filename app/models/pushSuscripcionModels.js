@@ -10,13 +10,8 @@ module.exports = (sequelize) => {
             autoIncrement: true,
         },
         id_administrador: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.INTEGER,
             allowNull: false,
-            references: {
-                model: 'Administrador',
-                key: 'id_admin',
-            },
-            onDelete: 'CASCADE',
         },
         endpoint: {
             type: DataTypes.TEXT,
