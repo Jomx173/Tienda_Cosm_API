@@ -9,5 +9,8 @@ app/uploads/*
 .vercel
 .env*
 
+# Plantilla documentada de variables (esta sí se versiona)
+!.env.example
+
 # Copias de seguridad del inventario (datos reales: nunca al repositorio)
 backups/

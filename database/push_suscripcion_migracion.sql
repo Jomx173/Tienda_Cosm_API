@@ -33,13 +33,12 @@ HAVING COUNT(*) > 1;
 -- ---------------------------------------------------------------------------
 -- Paso 3: Crear índice único uq_push_suscripcion_endpoint_hash solo si no existe
 -- Justificación del índice global (no compuesto con id_administrador):
---   La API deduplica a nivel de aplicación por (endpoint_hash, id_administrador),
---   pero en el estado actual de producción existe un único administrador
---   (id_administrador = 1) y no hay endpoints duplicados. Un endpoint de Push
---   API debería suscribirse una sola vez en el sistema, independientemente del
---   administrador que lo registre. Por tanto, un índice único global sobre
---   endpoint_hash es coherente con el uso actual y con la definición original
---   de la tabla en database/push_suscripcion.sql.
+--   La API deduplica por endpoint_hash a nivel global: si el mismo navegador
+--   se suscribe con otro administrador, reasigna la fila en vez de duplicarla
+--   (app/Controllers/pushController.js). Un endpoint de Push API debe existir
+--   una sola vez en el sistema, así que el índice único global sobre
+--   endpoint_hash es coherente con el código y con la definición original de
+--   la tabla en database/push_suscripcion.sql.
 -- ---------------------------------------------------------------------------
 SET @idx_unique_exists := (
     SELECT COUNT(*)

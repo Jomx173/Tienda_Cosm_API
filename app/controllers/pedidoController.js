@@ -262,7 +262,11 @@ const crearPedido = async (req, res) => {
                 data: formatearPedido(pedido),
             });
         } catch (error) {
-            await transaction.rollback();
+            // El push se envía después del commit: si algo falla ahí, la
+            // transacción ya terminó y no debe intentarse un rollback.
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
             throw error;
         }
     } catch (error) {
