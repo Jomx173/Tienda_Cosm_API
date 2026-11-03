@@ -23,7 +23,15 @@ let pushHabilitado = false;
 let clavePublicaVapid = null;
 let motivoDeshabilitado = '';
 
-const texto = (valor) => (typeof valor === 'string' ? valor.trim() : '');
+// Limpia espacios, saltos de línea y comillas que se cuelan al copiar y pegar
+// las claves en el panel de Vercel o en un .env.
+const texto = (valor) =>
+    typeof valor === 'string'
+        ? valor
+              .trim()
+              .replace(/^["']|["']$/g, '')
+              .replace(/\s+/g, '')
+        : '';
 
 const base64UrlABytes = (valor) => {
     try {
@@ -38,31 +46,46 @@ const asuntoValido = (asunto) =>
     /^mailto:[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(asunto) ||
     /^https?:\/\/[^\s]+$/i.test(asunto);
 
+// Deriva la clave pública (65 bytes, punto P-256 sin comprimir) a partir de
+// la privada. Es la misma operación que usa generateVAPIDKeys(): así el par
+// siempre coincide, aunque en Vercel falte la pública o sea de otro par.
+const derivarClavePublica = (bytesPrivada) => {
+    const ecdh = crypto.createECDH('prime256v1');
+    ecdh.setPrivateKey(bytesPrivada);
+
+    return ecdh.getPublicKey();
+};
+
 const configurarWebPush = () => {
-    const clavePublica = texto(process.env.VAPID_PUBLIC_KEY);
+    // VAPID_PUBLIC_KEY es el nombre correcto. Se acepta VITE_VAPID_PUBLIC_KEY
+    // como alias porque es el que ya estaba configurado en Vercel; el prefijo
+    // VITE_ solo tiene sentido en el frontend.
+    const clavePublicaConfigurada =
+        texto(process.env.VAPID_PUBLIC_KEY) ||
+        texto(process.env.VITE_VAPID_PUBLIC_KEY);
     const clavePrivada = texto(process.env.VAPID_PRIVATE_KEY);
     const asunto = texto(process.env.VAPID_SUBJECT);
 
-    if (!clavePublica || !clavePrivada) {
-        pushHabilitado = false;
-        motivoDeshabilitado = 'faltan VAPID_PUBLIC_KEY y/o VAPID_PRIVATE_KEY';
+    if (
+        !texto(process.env.VAPID_PUBLIC_KEY) &&
+        texto(process.env.VITE_VAPID_PUBLIC_KEY)
+    ) {
         console.warn(
+            '[push] Se está usando VITE_VAPID_PUBLIC_KEY como VAPID_PUBLIC_KEY. ' +
+                'En Vercel, renómbrala a VAPID_PUBLIC_KEY: el prefijo VITE_ es solo para el frontend.'
+        );
+    }
+
+    if (!clavePrivada) {
+        pushHabilitado = false;
+        motivoDeshabilitado = 'falta VAPID_PRIVATE_KEY';
+        console.error(
             `[push] Web Push desactivado: ${motivoDeshabilitado}. Los pedidos seguirán funcionando sin notificación.`
         );
         return;
     }
 
-    // Clave pública P-256 sin comprimir = 65 bytes; privada = 32 bytes.
-    const bytesPublica = base64UrlABytes(clavePublica);
-
-    if (!bytesPublica || bytesPublica.length !== 65) {
-        pushHabilitado = false;
-        motivoDeshabilitado =
-            'VAPID_PUBLIC_KEY no es una clave P-256 válida (se esperan 65 bytes en base64url)';
-        console.error(`[push] Web Push desactivado: ${motivoDeshabilitado}.`);
-        return;
-    }
-
+    // La privada son 32 bytes; de ella se deriva la pública (65 bytes).
     const bytesPrivada = base64UrlABytes(clavePrivada);
 
     if (!bytesPrivada || bytesPrivada.length !== 32) {
@@ -73,6 +96,37 @@ const configurarWebPush = () => {
         return;
     }
 
+    let bytesPublica;
+
+    try {
+        bytesPublica = derivarClavePublica(bytesPrivada);
+    } catch (error) {
+        pushHabilitado = false;
+        motivoDeshabilitado = `VAPID_PRIVATE_KEY no es una clave P-256 válida (${error.message})`;
+        console.error(`[push] Web Push desactivado: ${motivoDeshabilitado}.`);
+        return;
+    }
+
+    if (clavePublicaConfigurada) {
+        const bytesConfigurada = base64UrlABytes(clavePublicaConfigurada);
+
+        if (!bytesConfigurada || bytesConfigurada.length !== 65) {
+            console.warn(
+                '[push] VAPID_PUBLIC_KEY no es una clave P-256 válida; se usa la derivada de la privada.'
+            );
+        } else if (!bytesConfigurada.equals(bytesPublica)) {
+            console.warn(
+                '[push] VAPID_PUBLIC_KEY no corresponde a VAPID_PRIVATE_KEY; se usa la derivada de la privada.'
+            );
+        }
+    } else {
+        console.warn(
+            '[push] VAPID_PUBLIC_KEY no está definida; se deriva de VAPID_PRIVATE_KEY.'
+        );
+    }
+
+    // Se usa siempre la forma canónica base64url que genera web-push.
+    const clavePublica = bytesPublica.toString('base64url');
     const asuntoFinal = asunto || ASUNTO_POR_DEFECTO;
 
     if (!asuntoValido(asuntoFinal)) {
