@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS `push_suscripcion` (
     `p256dh` TEXT NOT NULL,
     `auth` TEXT NOT NULL,
     `user_agent` VARCHAR(255) DEFAULT NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uq_push_suscripcion_endpoint_hash` (`endpoint_hash`),
     KEY `idx_push_suscripcion_administrador` (`id_administrador`)
