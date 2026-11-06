@@ -26,20 +26,6 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING(80),
             allowNull: true,
         },
-        // Copia del color y del nombre al momento de la compra. Las filas
-        // antiguas quedan en NULL y se muestran como "No aplica".
-        color: {
-            type: DataTypes.STRING(30),
-            allowNull: true,
-        },
-        nombre: {
-            type: DataTypes.STRING(150),
-            allowNull: true,
-        },
-        imagen: {
-            type: DataTypes.STRING(255),
-            allowNull: true,
-        },
         codigo: {
             type: DataTypes.STRING(80),
             allowNull: true,

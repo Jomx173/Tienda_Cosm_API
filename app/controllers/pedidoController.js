@@ -159,11 +159,9 @@ const crearPedido = async (req, res) => {
                     );
                 }
 
-                // Copia fiel del catálogo: no se confía en el nombre ni en la
-                // imagen que envía el navegador.
+                // Copia fiel del catálogo: no se confía en el nombre que
+                // envía el navegador.
                 item.nombre = productoExiste.nombre;
-                item.imagen = productoExiste.imagen || null;
-                item.color = null;
 
                 const idVariante =
                     item.id_variante === undefined || item.id_variante === null || item.id_variante === ''
@@ -195,7 +193,6 @@ const crearPedido = async (req, res) => {
                     );
 
                     item.tono = variante.tono;
-                    item.color = variante.color || null;
                     item.codigo = variante.codigo || productoExiste.codigo || '';
                     productosAfectados.add(idProducto);
                 } else {
@@ -237,9 +234,6 @@ const crearPedido = async (req, res) => {
                     id_producto: Number(item.id_producto),
                     id_variante: idVariante,
                     tono: item.tono || null,
-                    color: item.color || null,
-                    nombre: item.nombre || null,
-                    imagen: item.imagen || null,
                     codigo: item.codigo || null,
                     cantidad,
                     precio,
